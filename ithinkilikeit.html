@@ -209,6 +209,35 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     ctx.fillStyle = color; ctx.fillText(s, x, y);
   }
 
+  function drawGoodDryer(x, y, tm) {
+    var f = Math.floor(tm * 8) % 4, step = Math.floor(tm * 8) % 2;
+    x += (Math.floor(tm * 20) % 2) ? 1 : 0;
+    function r(cx, cy, cw, ch, c) { ctx.fillStyle = c; ctx.fillRect(x + cx * S, y + cy * S, cw * S, ch * S); }
+    r(0, 0, 20, 22, '#000');
+    r(1, 1, 18, 20, '#FCE8F0');
+    r(1, 1, 18, 5, '#FBC7DE');
+    r(3, 2, 2, 2, '#5CDC88'); r(7, 2, 2, 2, '#3CBCFC'); r(12, 2, 5, 2, '#FCB800');
+    r(9, 0, 2, 1, '#FF6FB0'); r(7, -1, 2, 1, '#FF6FB0'); r(11, -1, 2, 1, '#FF6FB0');
+    for (var yy = 6; yy < 21; yy++) {
+      for (var xx = 1; xx < 19; xx++) {
+        var ddx = xx + 0.5 - 10, ddy = yy + 0.5 - 14, d = ddx * ddx + ddy * ddy, c;
+        if (d <= 42) {
+          if (d > 30) c = '#000';
+          else if (d > 20) c = '#F8C8DC';
+          else c = ((xx + yy + f) % 4 === 0) ? '#B8F0C8' : '#5CDC88';
+          r(xx, yy, 1, 1, c);
+        }
+      }
+    }
+    r(7, 12, 2, 2, '#FFF'); r(11, 12, 2, 2, '#FFF');
+    r(8, 13, 1, 1, '#000'); r(11, 13, 1, 1, '#000');
+    r(6, 11, 2, 1, '#000'); r(12, 11, 2, 1, '#000');
+    r(7, 17, 6, 1, '#000');
+    r(6, 16, 1, 1, '#000'); r(13, 16, 1, 1, '#000');
+    r(8, 16, 1, 1, '#FFF'); r(10, 16, 1, 1, '#FFF');
+    r(3, 22, 4, step ? 2 : 1, '#000');
+    r(13, 22, 4, step ? 1 : 2, '#000');
+  }
   function drawDryer(x, y, tm) {
     var f = Math.floor(tm * 8) % 4, step = Math.floor(tm * 8) % 2;
     x += (Math.floor(tm * 20) % 2) ? 1 : 0;
@@ -346,8 +375,9 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
 
   /* ---------- состояние ---------- */
   var state = 'title';              // title | play | over | win
-  var t = 0, since = 0, best = 0;
+  var t = 0, since = 0, best = 0, bestE = 0, endless = false;
   try { best = Number(localStorage.getItem('dema_wb_best')) || 0; } catch (e) {}
+  try { bestE = Number(localStorage.getItem('dema_wb_beste')) || 0; } catch (e) {}
 
   var dist, py, vy, onGround, gap, coins, invul, shake, jumpBuf, banner, tropical;
   var boostT, shieldT, magnetT;
@@ -368,9 +398,10 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
   function meters() { return Math.floor(dist / PXM); }
   function saveBest() {
     var m = meters();
+    if (endless) { if (m > bestE) { bestE = m; try { localStorage.setItem('dema_wb_beste', String(bestE)); } catch (e) {} } return; }
     if (m > best) { best = m; try { localStorage.setItem('dema_wb_best', String(best)); } catch (e) {} }
   }
-  function startGame() { reset(); state = 'play'; since = 0; }
+  function startGame(mode) { reset(); endless = mode === 'endless'; state = 'play'; since = 0; }
   function isPortraitPhone() {
     return window.matchMedia && window.matchMedia('(orientation: portrait) and (max-width: 900px)').matches;
   }
@@ -395,6 +426,7 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     else if (state === 'win') { if (since > 0.4) startPlane(); }
     else if (state === 'bover') { if (since > 0.4) startBoss(); }
     else if (state === 'bwin') { if (since > 0.6) startI3(); }
+    else if (state === 'over' && endless) { showMenu(); }
     else if (since > 0.4) startGame();
   }
 
@@ -419,7 +451,7 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
   }
 
   function playUpdate(dt) {
-    speed = Math.min(170, 95 + meters() * 0.09);
+    speed = Math.min(endless ? 240 : 170, 95 + meters() * 0.09);
     sp = boostT > 0 ? speed * 1.5 : speed;
     dist += sp * dt;
 
@@ -489,11 +521,11 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     items = items.filter(function (c) { return !c.got && c.wx - dist > -20; });
     pups = pups.filter(function (p) { return !p.got && p.wx - dist > -30; });
 
-    if (!tropical && meters() >= GOAL * 0.6) { tropical = true; banner = 2.8; decor = []; seq([523, 659, 784], 90, 0.12); }
+    if (!endless && !tropical && meters() >= GOAL * 0.6) { tropical = true; banner = 2.8; decor = []; seq([523, 659, 784], 90, 0.12); }
 
     if (gap <= 0) {
       gap = 0; state = 'over'; since = 0; sp = 0; boostT = 0; saveBest(); bank(coins); sfxOver();
-    } else if (meters() >= GOAL) {
+    } else if (!endless && meters() >= GOAL) {
       state = 'win'; since = 0; tropical = true; py = GROUND - PH; onGround = true;
       invul = 0; shake = 0; boostT = 0; obstacles = []; items = []; pups = []; saveBest(); save.l2 = 1; bank(coins); sfxWin();
     }
@@ -540,6 +572,7 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     setTrack(trackFor(state));
     var wantT = state === 'boss' || state === 'chase';
     if (throwBtn.hidden === wantT) throwBtn.hidden = !wantT;
+    throwBtn.textContent = state === 'chase' ? 'Кинуть бельё (X)' : 'Кинуть посылку (X)';
     if (isL2()) { l2Update(dt); return; }
     if (isL3()) { l3Update(dt); return; }
     if (state === 'play') playUpdate(dt);
@@ -657,10 +690,12 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
 
     /* интерфейс */
     if (state === 'play') {
-      var m = meters(), prog = Math.min(1, m / GOAL);
-      text('До Мальдив: ' + Math.max(0, GOAL - m) + ' м', 8, 20, 8, '#FCFCFC');
-      R(8, 32, 120, 6, '#000'); R(9, 33, Math.round(118 * prog), 4, '#FCB800');
       var cs = String(coins);
+      if (!endless) {
+        var m = meters(), prog = Math.min(1, m / GOAL);
+        text('До Мальдив: ' + Math.max(0, GOAL - m) + ' м', 8, 20, 8, '#FCFCFC');
+        R(8, 32, 120, 6, '#000'); R(9, 33, Math.round(118 * prog), 4, '#FCB800');
+      }
       text(cs, W - 8, 20, 8, '#FCFCFC', 'right');
       drawCoin(W - 8 - cs.length * 8 - 14, 19, 0);
 
@@ -684,8 +719,8 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
       text('Сушилка поймала!', W / 2, 40, 16, '#F83800', 'center');
       text('Дистанция: ' + meters() + ' м', W / 2, 76, 8, '#FCFCFC', 'center');
       text('Монет: ' + coins, W / 2, 90, 8, '#FCFCFC', 'center');
-      text('Рекорд: ' + best + ' м', W / 2, 104, 8, '#FCB800', 'center');
-      if (since > 0.4 && blink()) text('Нажми, чтобы ещё раз', W / 2, 132, 8, '#FCFCFC', 'center');
+      text('Рекорд: ' + (endless ? bestE : best) + ' м' + (endless ? ' (бесконечный)' : ''), W / 2, 104, 8, '#FCB800', 'center');
+      if (since > 0.4 && blink()) text(endless ? 'Нажми, чтобы в меню' : 'Нажми, чтобы ещё раз', W / 2, 132, 8, '#FCFCFC', 'center');
     } else if (state === 'win') {
       dim(0.3);
       text('Мальдивы!', W / 2, 30, 16, '#FCB800', 'center');
@@ -741,7 +776,7 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
       h += '<button class="btn alt" data-a="back">Назад</button>';
     } else {
       h = '<h1>ДЁМА<br>ПРОТИВ СУШИЛКИ</h1><div>Монет: ' + save.coins + '</div>' +
-        lv('l1', 1, 'склад ВБ', true) + lv('l2', 2, 'Ozon', save.l2, 'Дойди до Мальдив на уровне 1') + lv('l3', 3, 'Китай-город', save.l3, save.l2 ? 'Победи деда на уровне 2' : '') + '<button class="btn alt" data-a="shop">Магазин</button>';
+        lv('l1', 1, 'склад ВБ', true) + lv('l2', 2, 'Ozon', save.l2, 'Дойди до Мальдив на уровне 1') + lv('l3', 3, 'Китай-город', save.l3, save.l2 ? 'Победи деда на уровне 2' : '') + '<button class="btn alt" data-a="l1e">Бесконечный склад ВБ</button>' + '<button class="btn alt" data-a="shop">Магазин</button>';
     }
     menuEl.innerHTML = h;
   }
@@ -754,6 +789,7 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     if (a === 'shop') renderMenu('shop');
     else if (a === 'back') renderMenu();
     else if (a === 'l1') { hideMenu(); startGame(); }
+    else if (a === 'l1e') { hideMenu(); startGame('endless'); }
     else if (a === 'l2' && save.l2) { hideMenu(); startPlane(); }
     else if (a === 'l3' && save.l3) { hideMenu(); startI3(); }
     else if (a.indexOf('skin') === 0) { save.skin = +a.slice(4); applySkin(); persist(); renderMenu('shop'); }
@@ -780,7 +816,7 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     if (isPortraitPhone()) return;
     enterFullscreen(); getAudio();
     if ((state === 'boss' || state === 'chase') && throwCD <= 0) {
-      parcels.push({ x: PX + (state === 'chase' ? 20 : 18), y: py + (state === 'chase' ? 12 : 10) });
+      parcels.push({ x: PX + (state === 'chase' ? 20 : 18), y: py + (state === 'chase' ? 12 : 10), ty: Math.floor(Math.random() * 4) });
       throwCD = 0.3 - 0.06 * save.up[2]; beep(500, 900, 0.08, 'square', 0.04);
     }
   }
@@ -963,6 +999,19 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     R(x + 1, y + 3, 8, 6, '#F8B090'); R(x + 3, y + 5, 1, 1, '#000'); R(x + 6, y + 5, 1, 1, '#000');
     R(x, y + 9, 10, 8, shirt); R(x + 1, y + 17, 3, 7, pants); R(x + 6, y + 17, 3, 7, pants);
   }
+  var LCOLS = ['#FCFCFC', '#F08CE0', '#3CBCFC', '#FCB800', '#5CDC88', '#CB11AB'];
+  function drawLaundry(pc) {
+    var x = Math.round(pc.x), y = Math.round(pc.y), c = LCOLS[(pc.ty * 3 + Math.floor(pc.x / 26)) % LCOLS.length], sp = Math.floor(t * 10) % 2;
+    if (pc.ty === 0) {
+      R(x, y, 9, 6, c); R(x - 2, y + sp, 3, 3, c); R(x + 8, y + (1 - sp), 3, 3, c); R(x + 2, y + 2, 5, 1, '#FFF');
+    } else if (pc.ty === 1) {
+      R(x + 1, y, 7, 3, c); R(x, y + 2, 9, 5, c); R(x - 2, y + 1, 3, 2, c); R(x + 8, y + 1, 3, 2, c); R(x + 3, y + 1, 3, 1, '#FFF');
+    } else if (pc.ty === 2) {
+      R(x, y, 3, 5, c); R(x + 4, y + (sp ? 0 : 1), 3, 5, c);
+    } else {
+      R(x, y, 8, 8, c); R(x, y, 8, 2, '#FFF'); R(x, y + 6, 8, 2, '#FFF');
+    }
+  }
   function drawRide(x, y, rows) {
     drawFriend(x, y - 6);
     sprite(rows, x + 5, y - 31, PPAL);
@@ -1060,14 +1109,27 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
   function drawI3() {
     var a = i3T, i, x;
     if (a < 4.2) {
-      R(0, 0, W, H, '#2A2A3E'); R(0, 26, W, 62, '#000');
-      for (i = 0; i < 6; i++) R(W - ((t * 300 + i * 61) % (W + 40)), 40 + (i % 3) * 14, 24, 2, '#FCF8B0');
-      for (x = 0; x < W; x += 80) R(x, 22, 4, 70, '#6C6C7C');
-      R(0, 18, W, 2, '#BCBCBC'); R(0, GROUND, W, H - GROUND, '#5C5C6C');
-      R(120, GROUND - 40, 60, 20, '#8A4A1C');
+      var rock = Math.round(Math.sin(t * 7) * 1);
+      R(0, 0, W, GROUND, '#D8D0C0');
+      R(0, 20, W, 60, '#0C0C18');
+      for (i = 0; i < 8; i++) R(W - ((t * 260 + i * 67) % (W + 50)) + rock, 26 + (i % 3) * 16, 26, 3, '#FCE060');
+      for (i = 0; i < 3; i++) R(W - ((t * 260 + i * 210) % (W + 90)) + rock, 30, 2, 46, '#3A3A4A');
+      for (x = -2; x <= W; x += 64) R(x + rock, 16, 4, 68, '#8C8C94');
+      R(0, 16, W, 4, '#8C8C94'); R(0, 80, W, 4, '#8C8C94');
+      R(0, 0, W, 4, '#B8B0A0');
+      for (x = 40; x < W; x += 90) R(x + rock, 4, 3, 12, '#FCB800');
+      R(0, GROUND - 2, W, 2, '#6C6858');
+      person(14, GROUND - 24, '#5C5C74', '#33334A', '#221818', 0);
+      person(46, GROUND - 24, '#7C4C5C', '#2A2A3A', '#3A2A20', 0);
+      person(258, GROUND - 24, '#44506C', '#22283A', '#1A1414', 0);
+      person(288, GROUND - 24, '#5C7C5C', '#22283A', '#221818', 0);
+      R(10, GROUND - 8, 16, 3, '#3A3A44'); R(42, GROUND - 8, 16, 3, '#3A3A44');
+      R(254, GROUND - 8, 16, 3, '#3A3A44'); R(284, GROUND - 8, 16, 3, '#3A3A44');
+      R(100, 84, 120, 12, '#3A3A44'); text('Кольцевая линия', W / 2, 86, 6, '#FCE060', 'center');
+      R(120, GROUND - 40, 60, 20, '#2C6CE0'); R(120, GROUND - 40, 60, 3, '#3CBCFC'); R(120, GROUND - 22, 60, 2, '#1C3C90');
       sprite(PA, 140, GROUND - PH - 2, PPAL);
-      R(120, GROUND - 18, 60, 10, '#B0602C');
-      text(a < 2.4 ? 'Дёма едет в метро...' : 'Станция: Китай-город', W / 2, 100, 8, '#FCFCFC', 'center');
+      R(120, GROUND - 9, 60, 3, '#B0602C');
+      text(a < 2.4 ? 'Дёма едет в метро...' : 'Следующая: Китай-город', W / 2, 100, 8, '#FCFCFC', 'center');
     } else if (a < 13.4) {
       R(0, 0, W, GROUND, '#E8D8B0'); R(0, 0, W, 14, '#3A2A20');
       R(100, 18, 120, 22, '#000'); R(102, 20, 116, 18, '#F8A020');
@@ -1116,18 +1178,14 @@ canvas { display:block; width:min(100vw, 177.7778vh); height:min(100vh, 56.25vw)
     else {
       drawStreetBg(-t * 140);
       for (i = 0; i < cars.length; i++) drawCar(cars[i]);
-      var cols = ['#FCFCFC', '#F08CE0', '#3CBCFC', '#FCB800'];
-      for (i = 0; i < parcels.length; i++) {
-        var pc = parcels[i], cc = cols[Math.floor(pc.x / 20) % 4];
-        R(pc.x, pc.y, 8, 6, cc); R(pc.x - 2, pc.y, 2, 3, cc); R(pc.x + 8, pc.y, 2, 3, cc);
-      }
+      for (i = 0; i < parcels.length; i++) drawLaundry(parcels[i]);
       if (!(invul > 0 && Math.floor(invul * 16) % 2 === 0)) drawRide(PX - 10, Math.round(py), onGround ? (Math.floor(t * 10) % 2 ? PA : PB) : PJ);
     }
     ctx.restore();
     if (state === 'chase') {
       for (i = 0; i < lives; i++) R(8 + i * 12, 20, 8, 8, '#F83800');
       text('Машины: ' + kills + '/' + KILLS_GOAL, W - 8, 20, 8, '#FCFCFC', 'right');
-      if (since < 5) text('Прыжок над машиной. X: вещь', W / 2, 60, 8, '#FCFCFC', 'center');
+      if (since < 5) text('Прыжок над машиной. X: бельё', W / 2, 60, 8, '#FCFCFC', 'center');
     } else if (state === 'cover') {
       dim(0.5);
       text('Полиция догнала!', W / 2, 40, 16, '#F83800', 'center');
